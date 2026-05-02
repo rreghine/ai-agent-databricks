@@ -1,39 +1,9 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║  E-Commerce AI Agent — Parte 4 · Databricks Edition                          ║
+║  E-Commerce AI Agent — Parte 3 · Databricks Edition                          ║
 ║  Medallion Architecture · Delta Lake · Spark SQL · MLflow                    ║
 ║  Autoria: Rafael Reghine Munhoz | Data Analyst | MBA USP ESALQ               ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
-
-COMO RODAR:
-  Opção A — Databricks Apps (recomendado):
-    1. No Databricks: Compute → Apps → Create App → Streamlit
-    2. Upload deste arquivo como app.py
-    3. Configure secrets: ANTHROPIC_API_KEY, GROQ_API_KEY
-    4. Selecione o cluster que tem o Gold Layer
-
-  Opção B — Streamlit Cloud (mais fácil para Free Edition):
-    1. Suba no GitHub junto com requirements.txt
-    2. Deploy em share.streamlit.io
-    3. Configure secrets no painel do Streamlit Cloud
-    4. A conexão com Databricks é feita via databricks-connect
-
-  Opção C — Rodar localmente apontando para Databricks:
-    pip install streamlit databricks-connect
-    streamlit run app_databricks.py
-
-DEPENDÊNCIAS (requirements.txt):
-  streamlit>=1.32.0
-  pandas
-  numpy
-  matplotlib
-  langchain-anthropic
-  langchain-groq
-  langchain-core
-  langgraph
-  mlflow
-  databricks-connect>=14.0  ← conexão com Databricks remoto
-"""
 
 import streamlit as st
 import pandas as pd
