@@ -5,41 +5,6 @@
 # ║  Olist E-Commerce + IBGE (PIB por Estado)                                   ║
 # ║  Autoria: Rafael Reghine Munhoz | Data Analyst | MBA USP ESALQ              ║
 # ╚══════════════════════════════════════════════════════════════════════════════╝
-#
-# Arquitetura:
-#   Bronze Layer → ingestão raw (CSV Olist + CSV IBGE → Delta Lake)
-#   Silver Layer → limpeza, joins, enriquecimento com Spark
-#   Gold Layer   → tabelas analíticas para o AI Agent
-#        ↓
-#   Orquestrador LangGraph (orchestrator.py — Parte 3)
-#     ├── SQL Agent   → Spark SQL sobre Gold Layer
-#     ├── RAG Agent   → embeddings sobre Gold Layer
-#     └── MLflow Nativo Databricks → tracking de experimentos
-#
-# Como rodar:
-#   1. Crie um cluster no Databricks (Runtime 14.x LTS ML)
-#   2. Faça upload dos CSVs do Olist para /FileStore/olist/
-#   3. Faça upload do CSV do IBGE para /FileStore/ibge/
-#   4. Cole cada célula em um notebook separado no Databricks
-#   5. Execute célula por célula
-#
-# Datasets:
-#   Olist:  kaggle.com/datasets/olistbr/brazilian-ecommerce
-#   IBGE:   sidra.ibge.gov.br → Tabela 5938 (PIB per capita por UF)
-
-# COMMAND ----------
-# =============================================================================
-# CÉLULA 0 — Instalação de dependências
-# =============================================================================
-# Cole isso na primeira célula do seu notebook Databricks e rode UMA VEZ
-
-# %pip install langchain langchain-anthropic langchain-groq langgraph mlflow
-# dbutils.library.restartPython()
-
-# COMMAND ----------
-# =============================================================================
-# CÉLULA 1 — Imports e Configuração
-# =============================================================================
 
 import os
 import re
@@ -87,35 +52,6 @@ print(f"""
    Gold:       {GOLD_PATH}
 """)
 
-# COMMAND ----------
-# =============================================================================
-# CÉLULA 2 — Upload dos dados (instruções)
-# =============================================================================
-# ⚠️  ANTES DE CONTINUAR: faça upload dos arquivos no Databricks
-#
-# No menu lateral: Data → Add Data → Upload Files
-# Ou use o DBFS Explorer
-#
-# Arquivos necessários do Olist (Kaggle):
-#   olist_orders_dataset.csv
-#   olist_customers_dataset.csv
-#   olist_order_items_dataset.csv
-#   olist_order_payments_dataset.csv
-#   olist_order_reviews_dataset.csv
-#   olist_products_dataset.csv
-#   olist_sellers_dataset.csv
-#
-# Arquivo do IBGE (crie manualmente ou baixe do SIDRA):
-#   ibge_pib_estados.csv
-#
-# Formato do ibge_pib_estados.csv:
-#   estado,sigla,pib_per_capita_2018,regiao
-#   Acre,AC,16423.5,Norte
-#   Alagoas,AL,14271.2,Nordeste
-#   ...
-#
-# Dados reais do IBGE PIB per capita 2018 (R$):
-
 IBGE_DATA = [
     ("Acre",                "AC", 16423.5,  "Norte"),
     ("Alagoas",             "AL", 14271.2,  "Nordeste"),
@@ -147,13 +83,6 @@ IBGE_DATA = [
 ]
 
 print(f"✅ Dados IBGE carregados em memória: {len(IBGE_DATA)} estados")
-
-# COMMAND ----------
-# =============================================================================
-# CÉLULA 3 — BRONZE LAYER: Ingestão Raw
-# =============================================================================
-# Lê os CSVs do Olist e IBGE e salva como Delta Lake sem transformações
-# Princípio: Bronze = dado exatamente como veio da fonte
 
 print("=" * 60)
 print("  🥉 BRONZE LAYER — Ingestão Raw")
@@ -220,12 +149,6 @@ df_ibge.write.format("delta") \
 print(f"  ✅ bronze_ibge_estados: {df_ibge.count()} estados → {BRONZE_PATH}/ibge_estados")
 print(f"\n✅ Bronze Layer concluído!")
 
-# COMMAND ----------
-# =============================================================================
-# CÉLULA 4 — SILVER LAYER: Limpeza e Enriquecimento
-# =============================================================================
-# Aplica transformações, joins e validações de qualidade
-# Princípio: Silver = dados limpos, tipados e enriquecidos
 
 print("=" * 60)
 print("  🥈 SILVER LAYER — Limpeza e Enriquecimento")
@@ -346,13 +269,6 @@ except Exception as e:
 
 print(f"\n✅ Silver Layer concluído!")
 
-# COMMAND ----------
-# =============================================================================
-# CÉLULA 5 — GOLD LAYER: Tabelas Analíticas para o AI Agent
-# =============================================================================
-# Agrega dados para responder perguntas de negócio
-# Princípio: Gold = dado pronto para consumo pelo agente e pelo BI
-# DIFERENCIAL: cruzamento com IBGE (PIB per capita por estado)
 
 print("=" * 60)
 print("  🥇 GOLD LAYER — Tabelas Analíticas")
@@ -478,12 +394,6 @@ except Exception as e:
 
 print(f"\n✅ Gold Layer concluído! 3 tabelas analíticas criadas.")
 
-# COMMAND ----------
-# =============================================================================
-# CÉLULA 6 — Registrar tabelas no Catálogo Databricks (Unity Catalog / Hive)
-# =============================================================================
-# Permite consultar via SQL diretamente no Databricks SQL Editor
-
 print("=" * 60)
 print("  📚 Registrando tabelas no Catálogo")
 print("=" * 60)
@@ -513,12 +423,6 @@ for table_name, path in gold_tables.items():
 
 print(f"\n✅ Tabelas disponíveis no SQL Editor do Databricks!")
 print(f"   Acesse: SQL → SQL Editor → selecione 'ecommerce_ai_agent'")
-
-# COMMAND ----------
-# =============================================================================
-# CÉLULA 7 — Queries de validação (Spark SQL)
-# =============================================================================
-# Valida que o Gold Layer está correto e demonstra o poder do Spark SQL
 
 print("=" * 60)
 print("  🔍 Validação com Spark SQL")
@@ -561,11 +465,6 @@ for titulo, query in queries_validacao.items():
     except Exception as e:
         print(f"  ⚠️  {e}")
 
-# COMMAND ----------
-# =============================================================================
-# CÉLULA 8 — Integração com MLflow (nativo Databricks)
-# =============================================================================
-# Rastreia experimentos do AI Agent diretamente no MLflow do Databricks
 
 print("=" * 60)
 print("  🔬 MLflow — Rastreamento de Experimentos")
@@ -685,11 +584,6 @@ for run in runs_teste:
 
 print(f"\n✅ MLflow configurado! Acesse: Experiments → ecommerce_ai_agent_part4")
 
-# COMMAND ----------
-# =============================================================================
-# CÉLULA 9 — Integração com orchestrator.py (Parte 3)
-# =============================================================================
-# Adapter que conecta o Gold Layer do Databricks ao seu orquestrador LangGraph
 
 print("=" * 60)
 print("  🔗 Adapter: Databricks → orchestrator.py (Parte 3)")
@@ -863,12 +757,6 @@ for pergunta in perguntas_teste:
 
 print(f"\n✅ Adapter Databricks ↔ orchestrator.py pronto!")
 
-# COMMAND ----------
-# =============================================================================
-# CÉLULA 10 — Benchmark Multi-LLM no Databricks
-# =============================================================================
-# Compara Claude, Qwen e Mistral sobre o Gold Layer
-# Registra tudo no MLflow para análise posterior
 
 print("=" * 60)
 print("  🏁 Benchmark Multi-LLM — Gold Layer Databricks")
@@ -904,55 +792,4 @@ print("""
 print("  📊 Queries do benchmark:")
 for i, q in enumerate(BENCHMARK_QUERIES, 1):
     print(f"    {i}. {q}")
-
-# COMMAND ----------
-# =============================================================================
-# CÉLULA 11 — Resumo Final e Próximos Passos
-# =============================================================================
-
-print("""
-╔══════════════════════════════════════════════════════════════════════════════╗
-║  ✅ PROJETO CONCLUÍDO — E-Commerce AI Agent Parte 4                          ║
-╠══════════════════════════════════════════════════════════════════════════════╣
-║                                                                              ║
-║  🥉 BRONZE LAYER                                                             ║
-║     7 tabelas Olist + IBGE → Delta Lake                                      ║
-║                                                                              ║
-║  🥈 SILVER LAYER                                                             ║
-║     Joins, limpeza, tipagem, flags de atraso e satisfação                    ║
-║                                                                              ║
-║  🥇 GOLD LAYER                                                               ║
-║     3 tabelas analíticas prontas para o AI Agent                             ║
-║     DIFERENCIAL: cruzamento com PIB per capita do IBGE                       ║
-║                                                                              ║
-║  🤖 AI AGENT                                                                 ║
-║     Spark SQL Agent sobre Gold Layer                                          ║
-║     Integrado ao orchestrator.py (LangGraph — Parte 3)                       ║
-║                                                                              ║
-║  🔬 MLFLOW                                                                   ║
-║     Rastreamento nativo Databricks                                            ║
-║     Custo, latência, qualidade por LLM                                        ║
-║                                                                              ║
-╠══════════════════════════════════════════════════════════════════════════════╣
-║  📝 POST LINKEDIN                                                            ║
-║                                                                              ║
-║  Título: "AI Agent em Produção: do SQLite ao Databricks"                     ║
-║                                                                              ║
-║  Estrutura sugerida:                                                         ║
-║  1. A jornada: Parte 1 (RAG) → 2 (SQL) → 3 (LangGraph) → 4 (Databricks)    ║
-║  2. Por que Databricks? Delta Lake + MLflow nativo + escala                  ║
-║  3. O diferencial: cruzamento Olist + IBGE                                   ║
-║  4. Perguntas que o agente responde agora (com PIB)                          ║
-║  5. Conexão com projeto real: LWART → Fabric + Copilot                       ║
-║  6. Link do GitHub                                                            ║
-║                                                                              ║
-╠══════════════════════════════════════════════════════════════════════════════╣
-║  🎯 PARA A ENTREVISTA INDICIUM                                               ║
-║                                                                              ║
-║  "Desenvolvi um AI Agent com LangGraph e migrei para produção no             ║
-║   Databricks — com Arquitetura Medalão, Delta Lake e MLflow nativo.          ║
-║   O agente responde perguntas de negócio cruzando dados de e-commerce        ║
-║   com PIB per capita do IBGE. Posso mostrar o código e os experimentos."     ║
-║                                                                              ║
-╚══════════════════════════════════════════════════════════════════════════════╝
 """)
