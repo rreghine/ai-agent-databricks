@@ -1,10 +1,1 @@
 command: ["streamlit", "run", "app.py", "--server.port=8000", "--server.address=0.0.0.0", "--server.headless=true", "--browser.gatherUsageStats=false"]
-env:
-  - name: GROQ_API_KEY
-    value: "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"
-  - name: OPENAI_API_KEY
-    value: "sk-proj-UBBJvw8HPBab0xkSApF9alJOkOKh4ZqRA4KVZRwXusjWK41ML1K80UWW1sDVDkouFVey5EcKRYT3BlbkFJGU42i3dipXBbUAgvf8SjxoTZSYlsiub63P2VKUTZ2lme-t-uPAkOUG2nZ31RPZZ1EL3F0QTwM"
-  - name: ANTHROPIC_API_KEY
-    value: "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"
-  - name: GEMINI_API_KEY
-    value: "AIzaSyCEbsxr3Aw-20XXr1xHekiozWsFt2CwTIw"
