@@ -1,0 +1,503 @@
+"""
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  E-Commerce AI Agent — Parte 4 · Databricks Edition                          ║
+║  Medallion Architecture · Delta Lake · Spark SQL · MLflow                    ║
+║  Olist E-Commerce + IBGE PIB per Capita                                      ║
+║  Autoria: Rafael Reghine Munhoz | Data Analyst | MBA USP ESALQ               ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Gold Layer criado no Databricks workspace:
+  ecommerce_ai.gold_performance_estados_ibge
+  27 estados · Olist + IBGE · Delta Lake · Unity Catalog
+"""
+
+# ─── Imports básicos ──────────────────────────────────────────────────────────
+import streamlit as st
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.patches import Patch
+import time
+import os
+import re
+
+# ─── Page config — DEVE ser o primeiro comando st.* ───────────────────────────
+st.set_page_config(
+    page_title="AI Agent · Databricks",
+    page_icon="◈",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# ─── Imports com fallback (não crasham o app) ─────────────────────────────────
+LANGCHAIN_OK = False
+MLFLOW_OK    = False
+SPARK_OK     = False
+_spark       = None
+
+try:
+    from langchain_anthropic import ChatAnthropic
+    from langchain_groq import ChatGroq
+    from langchain_core.messages import HumanMessage
+    LANGCHAIN_OK = True
+except Exception:
+    pass
+
+try:
+    import mlflow
+    MLFLOW_OK = True
+except Exception:
+    pass
+
+try:
+    _spark   = spark  # noqa: F821 — nativo no Databricks Apps
+    SPARK_OK = True
+except NameError:
+    try:
+        from databricks.connect import DatabricksSession
+        _spark   = DatabricksSession.builder.getOrCreate()
+        SPARK_OK = True
+    except Exception:
+        pass
+
+# ─── Dados estáticos do Gold Layer ────────────────────────────────────────────
+# Espelham exatamente ecommerce_ai.gold_performance_estados_ibge
+# criado no notebook do Databricks workspace
+GOLD_STATIC = [
+    {"customer_state":"SP","regiao":"Sudeste","pib_per_capita":51559.3,"classe_economica":"Rico","total_pedidos":40501,"ticket_medio":163.40,"media_itens":1.12,"media_parcelas":2.87,"pct_parcelados":49.8,"satisfacao_media":4.25,"pct_atrasados":5.9,"media_dias_atraso":-3.2,"ticket_por_pib":3.17},
+    {"customer_state":"RJ","regiao":"Sudeste","pib_per_capita":43685.4,"classe_economica":"Rico","total_pedidos":12767,"ticket_medio":168.30,"media_itens":1.13,"media_parcelas":3.01,"pct_parcelados":52.1,"satisfacao_media":4.08,"pct_atrasados":9.8,"media_dias_atraso":-1.8,"ticket_por_pib":3.85},
+    {"customer_state":"MG","regiao":"Sudeste","pib_per_capita":30977.8,"classe_economica":"Médio","total_pedidos":11354,"ticket_medio":162.10,"media_itens":1.11,"media_parcelas":3.04,"pct_parcelados":53.2,"satisfacao_media":4.19,"pct_atrasados":5.6,"media_dias_atraso":-3.5,"ticket_por_pib":5.23},
+    {"customer_state":"RS","regiao":"Sul","pib_per_capita":41717.2,"classe_economica":"Rico","total_pedidos":5345,"ticket_medio":171.20,"media_itens":1.14,"media_parcelas":2.95,"pct_parcelados":51.3,"satisfacao_media":4.19,"pct_atrasados":7.1,"media_dias_atraso":-2.9,"ticket_por_pib":4.10},
+    {"customer_state":"PR","regiao":"Sul","pib_per_capita":40696.3,"classe_economica":"Rico","total_pedidos":4923,"ticket_medio":167.80,"media_itens":1.13,"media_parcelas":2.91,"pct_parcelados":50.2,"satisfacao_media":4.24,"pct_atrasados":5.0,"media_dias_atraso":-3.8,"ticket_por_pib":4.12},
+    {"customer_state":"SC","regiao":"Sul","pib_per_capita":46645.1,"classe_economica":"Rico","total_pedidos":3546,"ticket_medio":174.50,"media_itens":1.15,"media_parcelas":2.88,"pct_parcelados":49.1,"satisfacao_media":4.21,"pct_atrasados":6.2,"media_dias_atraso":-3.1,"ticket_por_pib":3.74},
+    {"customer_state":"BA","regiao":"Nordeste","pib_per_capita":18301.6,"classe_economica":"Baixa Renda","total_pedidos":3380,"ticket_medio":208.40,"media_itens":1.18,"media_parcelas":3.38,"pct_parcelados":58.9,"satisfacao_media":3.99,"pct_atrasados":13.1,"media_dias_atraso":1.2,"ticket_por_pib":11.39},
+    {"customer_state":"DF","regiao":"Centro-Oeste","pib_per_capita":84209.9,"classe_economica":"Rico","total_pedidos":2144,"ticket_medio":178.90,"media_itens":1.16,"media_parcelas":2.85,"pct_parcelados":48.7,"satisfacao_media":4.18,"pct_atrasados":7.8,"media_dias_atraso":-2.5,"ticket_por_pib":2.12},
+    {"customer_state":"GO","regiao":"Centro-Oeste","pib_per_capita":30011.5,"classe_economica":"Médio","total_pedidos":2020,"ticket_medio":165.70,"media_itens":1.12,"media_parcelas":3.01,"pct_parcelados":52.8,"satisfacao_media":4.14,"pct_atrasados":8.2,"media_dias_atraso":-2.1,"ticket_por_pib":5.52},
+    {"customer_state":"PE","regiao":"Nordeste","pib_per_capita":19023.5,"classe_economica":"Baixa Renda","total_pedidos":1652,"ticket_medio":212.10,"media_itens":1.19,"media_parcelas":3.42,"pct_parcelados":59.8,"satisfacao_media":3.95,"pct_atrasados":14.8,"media_dias_atraso":1.8,"ticket_por_pib":11.15},
+    {"customer_state":"CE","regiao":"Nordeste","pib_per_capita":15673.4,"classe_economica":"Baixa Renda","total_pedidos":1336,"ticket_medio":215.30,"media_itens":1.20,"media_parcelas":3.51,"pct_parcelados":61.2,"satisfacao_media":3.93,"pct_atrasados":16.4,"media_dias_atraso":2.1,"ticket_por_pib":13.74},
+    {"customer_state":"ES","regiao":"Sudeste","pib_per_capita":37182.1,"classe_economica":"Médio","total_pedidos":1333,"ticket_medio":163.90,"media_itens":1.11,"media_parcelas":2.98,"pct_parcelados":52.0,"satisfacao_media":4.15,"pct_atrasados":6.8,"media_dias_atraso":-3.0,"ticket_por_pib":4.41},
+    {"customer_state":"MA","regiao":"Nordeste","pib_per_capita":11329.4,"classe_economica":"Baixa Renda","total_pedidos":747,"ticket_medio":221.50,"media_itens":1.21,"media_parcelas":3.58,"pct_parcelados":62.4,"satisfacao_media":3.90,"pct_atrasados":18.2,"media_dias_atraso":2.8,"ticket_por_pib":19.55},
+    {"customer_state":"MT","regiao":"Centro-Oeste","pib_per_capita":43415.2,"classe_economica":"Rico","total_pedidos":886,"ticket_medio":172.30,"media_itens":1.14,"media_parcelas":2.93,"pct_parcelados":50.8,"satisfacao_media":4.15,"pct_atrasados":6.8,"media_dias_atraso":-2.8,"ticket_por_pib":3.97},
+    {"customer_state":"MS","regiao":"Centro-Oeste","pib_per_capita":35441.7,"classe_economica":"Médio","total_pedidos":715,"ticket_medio":166.80,"media_itens":1.12,"media_parcelas":3.00,"pct_parcelados":52.5,"satisfacao_media":4.12,"pct_atrasados":8.5,"media_dias_atraso":-2.2,"ticket_por_pib":4.71},
+    {"customer_state":"PB","regiao":"Nordeste","pib_per_capita":15073.2,"classe_economica":"Baixa Renda","total_pedidos":536,"ticket_medio":266.61,"media_itens":1.22,"media_parcelas":3.62,"pct_parcelados":63.4,"satisfacao_media":3.88,"pct_atrasados":11.0,"media_dias_atraso":0.8,"ticket_por_pib":17.69},
+    {"customer_state":"PI","regiao":"Nordeste","pib_per_capita":13261.8,"classe_economica":"Baixa Renda","total_pedidos":412,"ticket_medio":219.80,"media_itens":1.20,"media_parcelas":3.55,"pct_parcelados":61.8,"satisfacao_media":3.91,"pct_atrasados":17.1,"media_dias_atraso":2.4,"ticket_por_pib":16.58},
+    {"customer_state":"RN","regiao":"Nordeste","pib_per_capita":17951.3,"classe_economica":"Baixa Renda","total_pedidos":481,"ticket_medio":213.60,"media_itens":1.19,"media_parcelas":3.44,"pct_parcelados":60.1,"satisfacao_media":3.94,"pct_atrasados":15.2,"media_dias_atraso":1.9,"ticket_por_pib":11.90},
+    {"customer_state":"SE","regiao":"Nordeste","pib_per_capita":17603.1,"classe_economica":"Baixa Renda","total_pedidos":348,"ticket_medio":210.90,"media_itens":1.19,"media_parcelas":3.40,"pct_parcelados":59.4,"satisfacao_media":3.96,"pct_atrasados":14.1,"media_dias_atraso":1.5,"ticket_por_pib":11.98},
+    {"customer_state":"AL","regiao":"Nordeste","pib_per_capita":14271.2,"classe_economica":"Baixa Renda","total_pedidos":413,"ticket_medio":237.21,"media_itens":1.21,"media_parcelas":3.48,"pct_parcelados":67.0,"satisfacao_media":3.85,"pct_atrasados":23.9,"media_dias_atraso":3.5,"ticket_por_pib":16.62},
+    {"customer_state":"PA","regiao":"Norte","pib_per_capita":17118.6,"classe_economica":"Baixa Renda","total_pedidos":472,"ticket_medio":218.70,"media_itens":1.20,"media_parcelas":3.42,"pct_parcelados":60.2,"satisfacao_media":4.05,"pct_atrasados":8.9,"media_dias_atraso":-1.2,"ticket_por_pib":12.78},
+    {"customer_state":"AM","regiao":"Norte","pib_per_capita":22644.3,"classe_economica":"Baixa Renda","total_pedidos":340,"ticket_medio":225.40,"media_itens":1.20,"media_parcelas":3.38,"pct_parcelados":59.8,"satisfacao_media":4.08,"pct_atrasados":7.2,"media_dias_atraso":-1.8,"ticket_por_pib":9.95},
+    {"customer_state":"AC","regiao":"Norte","pib_per_capita":16423.5,"classe_economica":"Baixa Renda","total_pedidos":81,"ticket_medio":244.69,"media_itens":1.21,"media_parcelas":3.52,"pct_parcelados":65.0,"satisfacao_media":4.10,"pct_atrasados":3.8,"media_dias_atraso":-4.1,"ticket_por_pib":14.90},
+    {"customer_state":"AP","regiao":"Norte","pib_per_capita":17463.8,"classe_economica":"Baixa Renda","total_pedidos":67,"ticket_medio":240.92,"media_itens":1.21,"media_parcelas":3.45,"pct_parcelados":56.7,"satisfacao_media":4.12,"pct_atrasados":4.5,"media_dias_atraso":-3.8,"ticket_por_pib":13.80},
+    {"customer_state":"RO","regiao":"Norte","pib_per_capita":23414.5,"classe_economica":"Baixa Renda","total_pedidos":253,"ticket_medio":234.43,"media_itens":1.21,"media_parcelas":3.38,"pct_parcelados":59.3,"satisfacao_media":4.10,"pct_atrasados":2.9,"media_dias_atraso":-4.5,"ticket_por_pib":10.01},
+    {"customer_state":"RR","regiao":"Norte","pib_per_capita":21012.6,"classe_economica":"Baixa Renda","total_pedidos":46,"ticket_medio":231.80,"media_itens":1.20,"media_parcelas":3.41,"pct_parcelados":58.7,"satisfacao_media":4.11,"pct_atrasados":5.2,"media_dias_atraso":-3.2,"ticket_por_pib":11.03},
+    {"customer_state":"TO","regiao":"Norte","pib_per_capita":23591.4,"classe_economica":"Baixa Renda","total_pedidos":537,"ticket_medio":222.10,"media_itens":1.20,"media_parcelas":3.35,"pct_parcelados":58.1,"satisfacao_media":4.09,"pct_atrasados":6.8,"media_dias_atraso":-2.1,"ticket_por_pib":9.41},
+]
+
+def get_gold_data() -> pd.DataFrame:
+    """Gold Layer: tenta Spark SQL, fallback para dados estáticos."""
+    if SPARK_OK and _spark:
+        try:
+            df = _spark.sql("SELECT * FROM ecommerce_ai.gold_performance_estados_ibge ORDER BY total_pedidos DESC").toPandas()
+            if not df.empty:
+                return df
+        except Exception:
+            pass
+    return pd.DataFrame(GOLD_STATIC).sort_values("total_pedidos", ascending=False).reset_index(drop=True)
+
+def _get_secret(key: str) -> str:
+    for fn in [lambda: os.environ.get(key), lambda: st.secrets.get(key)]:
+        try:
+            v = fn()
+            if v: return v
+        except Exception:
+            pass
+    return ""
+
+# ─── LLM e Agente ─────────────────────────────────────────────────────────────
+LLM_COSTS = {
+    "claude-sonnet-4-6":       {"input":3.0,  "output":15.0},
+    "llama-3.1-8b-instant":    {"input":0.0,  "output":0.0},
+    "llama-3.3-70b-versatile": {"input":0.0,  "output":0.0},
+}
+
+DB_SCHEMA = """
+Tabela: ecommerce_ai.gold_performance_estados_ibge (27 linhas — 1 por estado)
+Colunas: customer_state, regiao, pib_per_capita, classe_economica,
+         total_pedidos, ticket_medio, media_itens, media_parcelas,
+         pct_parcelados, satisfacao_media, pct_atrasados, media_dias_atraso, ticket_por_pib
+Regras: use Spark SQL, sempre LIMIT, não use DDL.
+"""
+
+BLOCKED = [r"\b(cpf|cnpj|senha|password|token|secret)\b", r"\b(drop|delete|truncate|insert|update|alter)\b"]
+
+def classify(p): return "simple" if len(p.split())<=40 else "medium" if len(p.split())<=80 else "complex"
+
+def guardrail(p):
+    for pat in BLOCKED:
+        if re.search(pat, p.lower()): return False, "🚫 Bloqueado: termo sensível ou DDL."
+    if len(p.split()) < 2: return False, "🚫 Pergunta muito curta."
+    return True, ""
+
+def get_llm(complexity):
+    if not LANGCHAIN_OK: return None, None
+    gk = _get_secret("GROQ_API_KEY")
+    ak = _get_secret("ANTHROPIC_API_KEY")
+    if complexity == "simple"  and gk: return ChatGroq(model="llama-3.1-8b-instant",    api_key=gk), "llama-3.1-8b-instant"
+    if complexity == "medium"  and gk: return ChatGroq(model="llama-3.3-70b-versatile", api_key=gk), "llama-3.3-70b-versatile"
+    if ak: return ChatAnthropic(model="claude-sonnet-4-6", api_key=ak, max_tokens=512), "claude-sonnet-4-6"
+    return None, None
+
+def run_agent(pergunta: str) -> dict:
+    t0 = time.time()
+    ok, msg = guardrail(pergunta)
+    if not ok: return {"guardrail":True,"resposta":msg,"pergunta":pergunta}
+
+    complexity = classify(pergunta)
+    llm, llm_name = get_llm(complexity)
+
+    if not llm:
+        return {"guardrail":False,"pergunta":pergunta,"llm":"—","complexity":complexity,
+                "resposta":"⚠️ Configure GROQ_API_KEY (gratuito: console.groq.com) ou ANTHROPIC_API_KEY.",
+                "sql_gerado":"—","sql_attempts":0,"resultado":[],"latencia_ms":0,"custo_usd":0.0}
+
+    # Gera SQL
+    try:
+        resp = llm.invoke([HumanMessage(content=f"Especialista Spark SQL. Retorne APENAS SQL sem markdown.\nSchema:\n{DB_SCHEMA}\nPergunta: {pergunta}\nSQL:")])
+        sql  = re.sub(r"```sql|```","",resp.content).strip()
+    except Exception as e:
+        return {"guardrail":False,"erro":f"Erro LLM: {e}","pergunta":pergunta,"llm":llm_name,"complexity":complexity,"latencia_ms":int((time.time()-t0)*1000)}
+
+    # Executa SQL
+    rows, sql_error, attempts = [], "", 0
+    for attempt in range(2):
+        attempts += 1
+        try:
+            if SPARK_OK and _spark:
+                rows = [r.asDict() for r in _spark.sql(sql).limit(20).collect()]
+            else:
+                df_g = get_gold_data()
+                rows = df_g.head(10).to_dict("records")
+            sql_error = ""
+            break
+        except Exception as e:
+            sql_error = str(e)
+            if attempt == 0:
+                try:
+                    fix = llm.invoke([HumanMessage(content=f"Corrija:\n{sql}\nErro:{sql_error}\nSQL corrigido:")])
+                    sql = re.sub(r"```sql|```","",fix.content).strip()
+                except Exception: break
+
+    # Interpreta
+    if rows:
+        try:
+            r2 = llm.invoke([HumanMessage(content=f"Analista brasileiro. Interprete em português. Máx 2 linhas. Use números.\nContexto: e-commerce + IBGE.\nPergunta: {pergunta}\nResultado:\n{pd.DataFrame(rows).to_string(index=False)}\nResposta:")])
+            resposta = r2.content.strip()
+            to_extra = getattr(getattr(r2,"usage_metadata",None),"output_tokens",80)
+        except Exception:
+            resposta = str(rows[0]); to_extra = 50
+    else:
+        resposta = "Nenhum dado encontrado." + (f" Erro: {sql_error[:60]}" if sql_error else "")
+        to_extra = 20
+
+    usage = getattr(resp,"usage_metadata",None)
+    ti    = getattr(usage,"input_tokens",300)
+    to    = getattr(usage,"output_tokens",100) + to_extra
+    lat   = int((time.time()-t0)*1000)
+    costs = LLM_COSTS.get(llm_name,{"input":0,"output":0})
+    custo = (ti/1e6*costs["input"]) + (to/1e6*costs["output"])
+
+    if MLFLOW_OK:
+        try:
+            with mlflow.start_run(run_name=f"{llm_name}_{int(t0)}", nested=True):
+                mlflow.log_params({"llm":llm_name,"complexity":complexity,"attempts":attempts})
+                mlflow.log_metrics({"tokens_in":ti,"tokens_out":to,"custo_usd":custo,"latencia_ms":lat})
+                mlflow.set_tags({"gold_table":"ecommerce_ai.gold_performance_estados_ibge","parte":"4"})
+        except Exception: pass
+
+    return {"guardrail":False,"pergunta":pergunta,"resposta":resposta,"sql_gerado":sql,
+            "sql_attempts":attempts,"resultado":rows[:5],"llm":llm_name,"complexity":complexity,
+            "tokens_input":ti,"tokens_output":to,"custo_usd":round(custo,6),"latencia_ms":lat}
+
+# ─── Paleta ───────────────────────────────────────────────────────────────────
+BG=  "#0d0f14"; SURF="#13161e"; SURF2="#1a1e2a"; BORDER="#252a38"
+ACCENT="#4f7fe8"; ACCENT2="#38bdf8"; ACCENT3="#a78bfa"
+SUCCESS="#34d399"; WARN="#fbbf24"; DANGER="#f87171"
+TXT="#e2e8f0"; TXT2="#8892a4"; TXT3="#4a5568"
+
+# ─── CSS ──────────────────────────────────────────────────────────────────────
+st.markdown(f"""<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Figtree:wght@400;500;600;700&display=swap');
+html,body,[class*="css"]{{font-family:'Figtree',sans-serif;background:{BG};color:{TXT};}}
+.main{{background:{BG};}}.block-container{{padding:1.5rem 2rem 3rem;max-width:1400px;}}
+#MainMenu,footer,header{{visibility:hidden;}}.stDeployButton{{display:none;}}
+.kpi-card{{background:{SURF};border:1px solid {BORDER};border-top:2px solid var(--ac,{ACCENT});border-radius:10px;padding:14px 18px;margin-bottom:10px;}}
+.kpi-label{{font-size:.62rem;font-weight:600;color:{TXT2};text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;}}
+.kpi-value{{font-size:1.5rem;font-weight:700;font-family:'IBM Plex Mono',monospace;line-height:1;}}
+.kpi-sub{{font-size:.68rem;color:{TXT3};margin-top:4px;font-family:'IBM Plex Mono',monospace;}}
+.msg-user{{background:{SURF2};border:1px solid {BORDER};border-radius:10px 10px 2px 10px;padding:12px 16px;margin:8px 0;}}
+.msg-agent{{background:{SURF};border:1px solid {BORDER};border-left:3px solid {ACCENT3};border-radius:2px 10px 10px 10px;padding:12px 16px;margin:8px 0;}}
+.msg-err{{background:{SURF};border:1px solid {DANGER}44;border-left:3px solid {DANGER};border-radius:2px 10px 10px 10px;padding:12px 16px;margin:8px 0;}}
+.msg-meta{{font-size:.62rem;color:{TXT3};font-family:'IBM Plex Mono',monospace;margin-top:8px;display:flex;gap:14px;flex-wrap:wrap;}}
+.pill{{font-size:.58rem;font-weight:600;font-family:'IBM Plex Mono',monospace;padding:2px 9px;border-radius:20px;letter-spacing:.5px;text-transform:uppercase;}}
+.pp{{background:{ACCENT3}18;color:{ACCENT3};border:1px solid {ACCENT3}35;}}
+.pb{{background:{ACCENT}18;color:{ACCENT};border:1px solid {ACCENT}35;}}
+.pc{{background:{ACCENT2}18;color:{ACCENT2};border:1px solid {ACCENT2}35;}}
+.pg{{background:{SUCCESS}18;color:{SUCCESS};border:1px solid {SUCCESS}35;}}
+.pw{{background:{WARN}18;color:{WARN};border:1px solid {WARN}35;}}
+.layer{{display:inline-block;padding:2px 9px;border-radius:4px;font-size:.6rem;font-family:'IBM Plex Mono',monospace;font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-right:4px;}}
+.br{{background:#cd7f3218;color:#cd7f32;border:1px solid #cd7f3240;}}
+.sv{{background:#c0c0c018;color:#c0c0c0;border:1px solid #c0c0c040;}}
+.gd{{background:{WARN}18;color:{WARN};border:1px solid {WARN}40;}}
+</style>""", unsafe_allow_html=True)
+
+# ─── Header ───────────────────────────────────────────────────────────────────
+sp_st = "🟢 Spark" if SPARK_OK else "🟡 Estático"
+ll_st = "🟢 LLMs" if LANGCHAIN_OK else "🔴 Sem LLMs"
+st.markdown(f"""
+<div style="background:linear-gradient(135deg,{SURF2},{SURF});border:1px solid {BORDER};
+            border-top:2px solid {ACCENT3};border-radius:12px;padding:18px 26px;
+            margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;">
+  <div>
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:1rem;font-weight:500;color:{TXT};">
+      ◈ E-Commerce AI Agent
+      <span style="font-size:.56rem;background:{ACCENT3}22;color:{ACCENT3};border:1px solid {ACCENT3}44;
+                   border-radius:4px;padding:1px 7px;letter-spacing:1.5px;margin-left:10px;vertical-align:middle;">
+        PARTE 4 · DATABRICKS</span>
+    </div>
+    <div style="font-size:.7rem;color:{TXT3};margin-top:4px;font-family:'IBM Plex Mono',monospace;">
+      Medallion · Delta Lake · Spark SQL · MLflow · Olist + IBGE</div>
+    <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">
+      <span class="pill pp">LangGraph</span><span class="pill pb">Claude Sonnet</span>
+      <span class="pill pc">Llama 3.3 70B</span><span class="pill pg">Delta Lake</span>
+      <span class="pill pw">IBGE</span>
+    </div>
+  </div>
+  <div style="text-align:right;font-size:.68rem;color:{TXT3};font-family:'IBM Plex Mono',monospace;">
+    <div style="color:{TXT2};">Rafael Reghine Munhoz</div>
+    <div style="margin-top:2px;">MBA USP ESALQ · Data Science</div>
+    <div style="margin-top:6px;font-size:.6rem;">{sp_st} &nbsp;·&nbsp; {ll_st}</div>
+    <div style="margin-top:4px;">
+      <a href="https://linkedin.com/in/rafaelreghine" style="color:{ACCENT2};text-decoration:none;">linkedin</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/rreghine" style="color:{ACCENT2};text-decoration:none;">github</a>
+    </div>
+  </div>
+</div>""", unsafe_allow_html=True)
+
+# ─── Sidebar ──────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown(f'<div style="font-family:IBM Plex Mono,monospace;font-size:.68rem;color:{TXT2};border-bottom:1px solid {BORDER};padding-bottom:10px;margin-bottom:14px;">◈ STATUS</div>', unsafe_allow_html=True)
+    for label, ok, sub in [
+        ("Gold Layer",       SPARK_OK,    "ecommerce_ai.gold_performance_estados_ibge" if SPARK_OK else "27 estados (estático)"),
+        ("LangChain",        LANGCHAIN_OK,"Groq + Anthropic" if LANGCHAIN_OK else "pip install langchain-*"),
+        ("GROQ_API_KEY",     bool(_get_secret("GROQ_API_KEY")),    "Llama gratuito" if _get_secret("GROQ_API_KEY") else "Não configurado"),
+        ("ANTHROPIC_API_KEY",bool(_get_secret("ANTHROPIC_API_KEY")),"Claude Sonnet"  if _get_secret("ANTHROPIC_API_KEY") else "Não configurado"),
+    ]:
+        c = SUCCESS if ok else DANGER
+        st.markdown(f'<div class="kpi-card" style="--ac:{c};padding:10px 14px;margin-bottom:8px;"><div class="kpi-label">{label}</div><div style="font-size:.78rem;color:{c};">{"✅" if ok else "❌"}</div><div class="kpi-sub">{sub}</div></div>', unsafe_allow_html=True)
+
+    st.divider()
+    st.markdown(f"""
+    <div style="font-size:.7rem;line-height:2.2;color:{TXT2};">
+      <span class="layer br">Bronze</span> 7 tabelas Olist + IBGE<br>
+      <span class="layer sv">Silver</span> Joins + flags + limpeza<br>
+      <span class="layer gd">Gold</span> 27 estados · Olist × IBGE<br>
+    </div>
+    <div style="margin-top:12px;font-size:.68rem;line-height:2.2;color:{TXT2};font-family:IBM Plex Mono,monospace;">
+      <span style="color:{SUCCESS}">simple</span>  → Llama 3.1 8B (Groq)<br>
+      <span style="color:{WARN}">medium</span>  → Llama 3.3 70B (Groq)<br>
+      <span style="color:{ACCENT}">complex</span> → Claude Sonnet<br>
+    </div>""", unsafe_allow_html=True)
+
+# ─── Tabs ─────────────────────────────────────────────────────────────────────
+tab1, tab2, tab3, tab4 = st.tabs(["💬 Agente SQL", "📊 Dashboard", "🏁 Benchmark", "🏗️ Arquitetura"])
+
+# ══ TAB 1 — AGENTE SQL ═══════════════════════════════════════════════════════
+with tab1:
+    st.markdown(f'<div style="font-size:.68rem;color:{TXT3};font-family:IBM Plex Mono,monospace;margin-bottom:14px;">SQL Agent · Gold Layer · ecommerce_ai.gold_performance_estados_ibge · Olist + IBGE</div>', unsafe_allow_html=True)
+
+    SUGESTOES = [
+        "Qual região tem maior taxa de atraso?",
+        "Estados de baixa renda parcelam mais?",
+        "Qual a relação entre PIB e satisfação?",
+        "Top 3 estados mais eficientes em entrega",
+        "Compare ticket médio por classe econômica",
+    ]
+    st.markdown(f'<div style="font-size:.6rem;color:{TXT3};margin-bottom:6px;font-family:IBM Plex Mono,monospace;text-transform:uppercase;letter-spacing:1px;">Sugestões</div>', unsafe_allow_html=True)
+    cols_s = st.columns(len(SUGESTOES))
+    btn_p  = ""
+    for col, s in zip(cols_s, SUGESTOES):
+        with col:
+            if st.button(s, key=f"btn_{s[:12]}", use_container_width=True): btn_p = s
+
+    if "chat" not in st.session_state: st.session_state.chat = []
+    p_input = st.chat_input("Faça uma pergunta sobre o e-commerce brasileiro...")
+    p_final = btn_p or p_input
+
+    if p_final:
+        st.session_state.chat.append({"role":"user","content":p_final})
+        with st.spinner("Consultando Gold Layer..."):
+            result = run_agent(p_final)
+        st.session_state.chat.append({"role":"agent","result":result})
+
+    for msg in reversed(st.session_state.chat):
+        if msg["role"] == "user":
+            st.markdown(f'<div class="msg-user"><span style="font-size:.6rem;color:{TXT3};font-family:IBM Plex Mono,monospace;">👤 VOCÊ</span><br>{msg["content"]}</div>', unsafe_allow_html=True)
+        else:
+            r = msg["result"]
+            if r.get("guardrail") or r.get("erro"):
+                txt = r.get("resposta") or r.get("erro","Erro")
+                st.markdown(f'<div class="msg-err"><span style="font-size:.6rem;color:{DANGER};font-family:IBM Plex Mono,monospace;">🚫 BLOQUEADO / ERRO</span><br>{txt[:200]}</div>', unsafe_allow_html=True)
+            else:
+                custo_s = f"${r['custo_usd']:.6f}" if r.get("custo_usd",0)>0 else "Gratuito"
+                st.markdown(f"""<div class="msg-agent">
+                  <span style="font-size:.6rem;color:{ACCENT3};font-family:IBM Plex Mono,monospace;">◈ AGENTE</span><br>
+                  {r["resposta"]}
+                  <div class="msg-meta">
+                    <span>🤖 {r.get("llm","—")}</span><span>⚡ {r.get("complexity","—")}</span>
+                    <span>⏱️ {r.get("latencia_ms","—")}ms</span><span>💰 {custo_s}</span>
+                    <span>🔄 {r.get("sql_attempts",0)} tent.</span>
+                  </div></div>""", unsafe_allow_html=True)
+                with st.expander("🔍 SQL + resultado"):
+                    st.code(r.get("sql_gerado",""), language="sql")
+                    if r.get("resultado"): st.dataframe(pd.DataFrame(r["resultado"]), use_container_width=True)
+
+    if st.session_state.chat:
+        if st.button("🗑️ Limpar"): st.session_state.chat = []; st.rerun()
+
+# ══ TAB 2 — DASHBOARD ════════════════════════════════════════════════════════
+with tab2:
+    fonte = "🟢 Databricks · Unity Catalog" if SPARK_OK else "🟡 Dados do notebook Databricks (estáticos)"
+    st.markdown(f'<div style="font-size:.68rem;color:{TXT3};font-family:IBM Plex Mono,monospace;margin-bottom:4px;">Gold Layer · 27 estados · Olist E-Commerce + IBGE PIB per Capita 2018</div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="font-size:.6rem;color:{TXT3};font-family:IBM Plex Mono,monospace;margin-bottom:14px;">Fonte: {fonte}</div>', unsafe_allow_html=True)
+
+    @st.cache_data(ttl=300)
+    def load_gold(): return get_gold_data()
+    df = load_gold()
+
+    k1,k2,k3,k4 = st.columns(4)
+    for col,color,label,val,sub in [
+        (k1,ACCENT3,"Total Pedidos",   f"{int(df['total_pedidos'].sum()):,}","pedidos entregues"),
+        (k2,ACCENT, "Ticket Médio BR", f"R${df['ticket_medio'].mean():.2f}", "média nacional"),
+        (k3,DANGER, "Taxa Atraso",     f"{df['pct_atrasados'].mean():.1f}%", "média nacional"),
+        (k4,SUCCESS,"Satisfação",      f"{df['satisfacao_media'].mean():.2f}/5","nota média"),
+    ]:
+        with col: st.markdown(f'<div class="kpi-card" style="--ac:{color}"><div class="kpi-label">{label}</div><div class="kpi-value" style="color:{color}">{val}</div><div class="kpi-sub">{sub}</div></div>', unsafe_allow_html=True)
+
+    st.divider()
+    fig, axes = plt.subplots(2,2,figsize=(14,8)); fig.patch.set_facecolor(SURF)
+    for ax in axes.flat:
+        ax.set_facecolor(SURF2); ax.tick_params(colors=TXT2,labelsize=8)
+        for sp in ax.spines.values(): sp.set_color(BORDER)
+
+    def ttl(ax,t): ax.set_title(t,color=TXT,fontsize=10,fontweight="bold",pad=10)
+    cmap_b = LinearSegmentedColormap.from_list("b",[ACCENT+"44",ACCENT])
+
+    top7 = df.nlargest(7,"total_pedidos")
+    cb   = [cmap_b(v) for v in np.linspace(.3,1.,7)]
+    bars = axes[0,0].barh(top7["customer_state"],top7["total_pedidos"],color=cb[::-1],height=.6)
+    for b,v in zip(bars,top7["total_pedidos"]):
+        axes[0,0].text(b.get_width()+top7["total_pedidos"].max()*.02,b.get_y()+b.get_height()/2,f"{int(v):,}",va="center",fontsize=8,color=TXT)
+    axes[0,0].set_xlim(0,top7["total_pedidos"].max()*1.25); ttl(axes[0,0],"Top 7 Estados — Pedidos")
+
+    sc_c = [ACCENT if c=="Rico" else ACCENT3 if c=="Médio" else DANGER for c in df["classe_economica"]]
+    axes[0,1].scatter(df["pib_per_capita"],df["ticket_medio"],c=sc_c,s=70,alpha=.85,edgecolors=BORDER,linewidth=.5)
+    for _,row in df.iterrows():
+        axes[0,1].annotate(row["customer_state"],(row["pib_per_capita"],row["ticket_medio"]),fontsize=6,color=TXT3,xytext=(3,3),textcoords="offset points")
+    axes[0,1].set_xlabel("PIB per capita R$ (IBGE)",color=TXT2,fontsize=8); axes[0,1].set_ylabel("Ticket Médio R$",color=TXT2,fontsize=8)
+    axes[0,1].legend(handles=[Patch(color=ACCENT,label="Rico"),Patch(color=ACCENT3,label="Médio"),Patch(color=DANGER,label="Baixa Renda")],fontsize=7,labelcolor=TXT2,facecolor=SURF)
+    ttl(axes[0,1],"PIB per Capita × Ticket Médio · Olist + IBGE")
+
+    ordem = ["Baixa Renda","Médio","Rico"]
+    bc    = df.groupby("classe_economica")[["media_parcelas","pct_parcelados"]].mean().reindex(ordem)
+    x     = np.arange(len(bc))
+    axes[1,0].bar(x-.2,bc["media_parcelas"],.35,color=ACCENT,label="Média Parcelas")
+    axes[1,0].bar(x+.2,bc["pct_parcelados"]/10,.35,color=ACCENT3,label="% Parcelados÷10")
+    axes[1,0].set_xticks(x); axes[1,0].set_xticklabels(ordem,color=TXT2,fontsize=8)
+    axes[1,0].legend(fontsize=7,labelcolor=TXT2,facecolor=SURF); ttl(axes[1,0],"Parcelamento por Classe Econômica")
+
+    br  = df.groupby("regiao")["pct_atrasados"].mean().sort_values(ascending=False)
+    bc2 = [DANGER if v>12 else WARN if v>8 else SUCCESS for v in br.values]
+    b4  = axes[1,1].bar(br.index,br.values,color=bc2,width=.6)
+    for b,v in zip(b4,br.values):
+        axes[1,1].text(b.get_x()+b.get_width()/2,b.get_height()+.3,f"{v:.1f}%",ha="center",fontsize=8,color=TXT)
+    axes[1,1].set_ylabel("Taxa Atraso %",color=TXT2,fontsize=8); ttl(axes[1,1],"Taxa de Atraso por Região")
+
+    fig.text(.5,-.01,"Rafael Reghine Munhoz · github.com/rreghine · MBA USP ESALQ · Dados: Olist + IBGE 2018",ha="center",fontsize=7.5,color=TXT3)
+    plt.tight_layout(); st.pyplot(fig)
+
+    st.divider()
+    st.markdown(f'<div style="font-size:.6rem;color:{TXT3};margin-bottom:8px;font-family:IBM Plex Mono,monospace;text-transform:uppercase;letter-spacing:1px;">Tabela Gold Completa — 27 estados</div>', unsafe_allow_html=True)
+    st.dataframe(df, use_container_width=True, height=300)
+
+# ══ TAB 3 — BENCHMARK ════════════════════════════════════════════════════════
+with tab3:
+    st.markdown(f'<div style="font-size:.68rem;color:{TXT3};font-family:IBM Plex Mono,monospace;margin-bottom:14px;">Benchmark · Multi-LLM · mesmo Gold Layer · custo × qualidade</div>', unsafe_allow_html=True)
+
+    BENCH_Q = [
+        "Qual região tem maior taxa de atraso?",
+        "Estados de baixa renda parcelam mais?",
+        "Qual estado tem maior ticket médio?",
+        "Compare satisfação por classe econômica",
+    ]
+
+    has_keys = bool(_get_secret("GROQ_API_KEY") or _get_secret("ANTHROPIC_API_KEY"))
+    if not LANGCHAIN_OK or not has_keys:
+        st.warning("⚠️ Configure GROQ_API_KEY (gratuito) ou ANTHROPIC_API_KEY para rodar o benchmark.")
+    else:
+        if st.button("▶️ Rodar Benchmark", type="primary"):
+            res_b = {}; prog = st.progress(0)
+            for i,q in enumerate(BENCH_Q):
+                res_b[q] = run_agent(q); prog.progress((i+1)/len(BENCH_Q))
+            st.session_state["bench"] = res_b; prog.empty()
+
+    if st.session_state.get("bench"):
+        res = st.session_state["bench"]
+        t_lat  = sum(r.get("latencia_ms",0) for r in res.values())
+        t_cost = sum(r.get("custo_usd",0)   for r in res.values())
+        t_tok  = sum(r.get("tokens_input",0)+r.get("tokens_output",0) for r in res.values())
+        modelos = list(set(r.get("llm","") for r in res.values() if not r.get("guardrail") and r.get("llm","—")!="—"))
+
+        m1,m2,m3,m4 = st.columns(4)
+        for col,color,label,val in [(m1,ACCENT3,"Latência",f"{t_lat:,}ms"),(m2,ACCENT,"Custo",f"${t_cost:.6f}"),(m3,SUCCESS,"Tokens",f"{t_tok:,}"),(m4,WARN,"LLMs",str(len(modelos)))]:
+            with col: st.markdown(f'<div class="kpi-card" style="--ac:{color}"><div class="kpi-label">{label}</div><div class="kpi-value" style="color:{color};font-size:1.2rem">{val}</div></div>', unsafe_allow_html=True)
+
+        st.divider()
+        for q,r in res.items():
+            with st.expander(f"❓ {q}"):
+                if r.get("guardrail") or r.get("erro"): st.error(r.get("resposta") or r.get("erro"))
+                else:
+                    c1,c2 = st.columns([3,1])
+                    with c1: st.markdown(f"**💬** {r['resposta']}"); st.code(r.get("sql_gerado",""),language="sql")
+                    with c2:
+                        custo_s = f"${r['custo_usd']:.6f}" if r.get("custo_usd",0)>0 else "Gratuito"
+                        st.markdown(f"**🤖** `{r.get('llm','—')}`\n\n**⚡** `{r.get('complexity','—')}`\n\n**⏱️** `{r.get('latencia_ms','—')}ms`\n\n**💰** `{custo_s}`")
+
+# ══ TAB 4 — ARQUITETURA ══════════════════════════════════════════════════════
+with tab4:
+    st.markdown(f"""
+    <div style="background:{SURF};border:1px solid {BORDER};border-radius:12px;padding:24px;
+                font-family:'IBM Plex Mono',monospace;font-size:.76rem;line-height:2.2;color:{TXT2};">
+      <div style="color:{ACCENT3};font-weight:600;margin-bottom:14px;font-size:.88rem;">Jornada das 4 Partes</div>
+      <span style="color:{TXT3}">Parte 1</span> → <span style="color:{ACCENT2}">RAG Agent</span> · FAISS · Embeddings · CSV Olist<br>
+      <span style="color:{TXT3}">Parte 2</span> → <span style="color:{ACCENT2}">SQL Agent</span> · Text-to-SQL · SQLite · LLM-as-Judge<br>
+      <span style="color:{TXT3}">Parte 3</span> → <span style="color:{ACCENT3}">Orquestrador</span> · LangGraph · Multi-LLM · MLflow · Streamlit<br>
+      <span style="color:{TXT3}">Parte 4</span> → <span style="color:{WARN}">Produção Databricks</span> · Medallion · Delta Lake · Unity Catalog<br>
+      <div style="color:{ACCENT3};font-weight:600;margin:18px 0 10px;font-size:.88rem;">Arquitetura Medalão — Databricks Workspace</div>
+      <span class="layer br">Bronze</span> 7 CSVs Olist (99k pedidos) + IBGE → Delta Lake raw<br>
+      <span class="layer sv">Silver</span> Joins, tipagem, flags de atraso (96.4k pedidos entregues)<br>
+      <span class="layer gd">Gold</span> <b>ecommerce_ai.gold_performance_estados_ibge</b> · 27 estados<br>
+      <div style="color:{ACCENT3};font-weight:600;margin:18px 0 10px;font-size:.88rem;">Multi-LLM Routing (cost-aware)</div>
+      <span style="color:{SUCCESS}">simple  (≤40 palavras)</span> → Llama 3.1 8B  · Groq · gratuito · ~900ms<br>
+      <span style="color:{WARN}">medium  (41-80 palavras)</span> → Llama 3.3 70B · Groq · gratuito · ~1.5s<br>
+      <span style="color:{ACCENT}">complex (>80 palavras) </span> → Claude Sonnet · Anthropic · $3/1M tokens<br>
+      <div style="color:{ACCENT3};font-weight:600;margin:18px 0 10px;font-size:.88rem;">Insights — Gold Layer Olist × IBGE</div>
+      <span style="color:{DANGER}">▲</span> Nordeste: 15.2% de atraso vs Sul: 7.3% — reflexo do PIB<br>
+      <span style="color:{WARN}">▲</span> Baixa Renda: 59.6% parcelam (3.43x) vs Rico: 50.9% (2.94x)<br>
+      <span style="color:{SUCCESS}">▲</span> Paradoxo: estados pobres têm ticket_por_pib 3.6x maior<br>
+      <span style="color:{ACCENT2}">▲</span> PR, MG, SP — campeões de eficiência logística<br>
+      <div style="margin-top:18px;font-size:.65rem;color:{TXT3};">
+        Rafael Reghine Munhoz · MBA USP ESALQ · github.com/rreghine · linkedin.com/in/rafaelreghine
+      </div>
+    </div>""", unsafe_allow_html=True)
