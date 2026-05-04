@@ -10,7 +10,7 @@
 ![Status](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)
 
 Agente de IA conversacional sobre dados de e-commerce brasileiro (Olist) cruzados com o PIB
-per capita estadual do IBGE. Executa sobre Arquitetura Medalão no Databricks — Bronze → Silver
+per capita estadual do IBGE. Executa sobre Arquitetura Medallion no Databricks — Bronze → Silver
 → Gold em Delta Lake — com Spark SQL direto no Unity Catalog. Multi-LLM routing automático por
 complexidade da pergunta: Llama 3.1 8B e Llama 3.3 70B (gratuitos via Groq) para consultas
 simples e medianas, Claude Sonnet para consultas complexas. Guardrails integrados, MLflow
@@ -65,7 +65,7 @@ Streamlit — 4 abas
 
 ---
 
-## Arquitetura Medalao — Databricks Workspace
+## Arquitetura Medallion — Databricks Workspace
 
 ```
 Bronze Layer
