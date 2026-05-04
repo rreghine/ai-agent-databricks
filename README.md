@@ -190,16 +190,6 @@ Cada execucao loga automaticamente:
 
 ---
 
-## Insights — Gold Layer Olist × IBGE
-
-- Nordeste: 15.2% de atraso vs Sul: 7.3% — correlacao direta com PIB per capita
-- Baixa Renda: 59.6% parcelam (media 3.43x) vs Rico: 50.9% (media 2.94x)
-- Paradoxo: estados de baixa renda tem ticket_por_pib 3.6x maior que estados ricos
-- PR, MG, SP — campeoes de eficiencia logistica (media_dias_atraso negativo)
-- DF tem o maior PIB per capita (R$ 84k) mas nao o maior ticket medio
-
----
-
 ## Tecnologias Utilizadas
 
 | Categoria | Ferramentas |
