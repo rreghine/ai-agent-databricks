@@ -28,15 +28,15 @@ latencia, tokens e custo sobre o mesmo Gold Layer.
 
 ### Interface do Agente
 
-[![Agente](preview_agent.png)](preview_agent.png)
+[![Agente](preview_agent.png)](preview_agent.PNG)
 
 ### Dashboard Gold Layer · Olist + IBGE
 
-[![Dashboard](preview_dashboard.png)](preview_dashboard.png)
+[![Dashboard](preview_dashboard.png)](preview_dashboard.PNG)
 
 ### Gold Layer no Databricks SQL Editor
 
-[![Databricks SQL](preview_databricks_sql.png)](preview_databricks_sql.png)
+[![Databricks SQL](preview_databricks_sql.png)](preview_databricks_sql.PNG)
 
 ---
 
