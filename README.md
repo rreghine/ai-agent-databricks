@@ -12,10 +12,10 @@
 
 Agente de IA conversacional sobre dados de e-commerce brasileiro (Olist) cruzados com o PIB
 per capita estadual do IBGE. Executa sobre Arquitetura Medalao no Databricks — Bronze → Silver
-→ Gold em Delta Lake — com transformacoes orquestradas pelo dbt e consultas via Spark SQL no
-Unity Catalog. Multi-LLM routing automatico por complexidade da pergunta: Llama 3.1 8B e
-Llama 3.3 70B (gratuitos via Groq) para consultas simples e medianas, Claude Sonnet para
-consultas complexas. Benchmark ao vivo com 5 modelos via Groq + Claude Sonnet comparando
+→ Gold em Delta Lake — com transformacoes orquestradas pelo dbt e tabelas servidas pelo SQL
+Warehouse no Unity Catalog. Multi-LLM routing automatico por complexidade da pergunta: Llama
+3.1 8B e Llama 3.3 70B (gratuitos via Groq) para consultas simples e medianas, Claude Sonnet
+para consultas complexas. Benchmark ao vivo com 5 modelos via Groq + Claude Sonnet comparando
 latencia, tokens e custo sobre o mesmo Gold Layer.
 
 ---
