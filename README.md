@@ -96,21 +96,21 @@ Streamlit — 4 abas
 ```
 ai-agent-databricks/
 |
-|-- dbt_ecommerce/                     # Projeto dbt — Bronze, Silver e Gold
+|-- dbt_ecommerce/                     
 |   |-- dbt_project.yml
 |   |-- profiles.yml
 |   |-- seeds/
-|   |   |-- ibge_pib_estados.csv       # IBGE 2018 — 27 estados (embutido)
+|   |   |-- ibge_pib_estados.csv       
 |   |   |-- schema.yml
-|   |   |-- olist_*.csv                # baixar do Kaggle
+|   |   |-- olist_*.csv                
 |   |-- models/
-|   |   |-- silver/                    # 4 models Silver
-|   |   |-- gold/                      # 3 models Gold
+|   |   |-- silver/                    
+|   |   |-- gold/                      
 |   |-- PASSO_A_PASSO_WINDOWS.md
 |
-|-- app.py                             # Streamlit app — Databricks Apps (nativo)
-|-- app_databricks.py                  # Streamlit app — Streamlit Cloud / local
-|-- app.yaml                           # Config Databricks Apps
+|-- app.py                             
+|-- app_databricks.py                  
+|-- app.yaml                           
 |-- requirements.txt
 |-- README.md
 ```
