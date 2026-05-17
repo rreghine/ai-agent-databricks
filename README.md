@@ -145,8 +145,7 @@ O dbt substitui as transformacoes PySpark das camadas Silver e Gold. Os CSVs do
 Olist sao carregados via `dbt seed` diretamente para o Unity Catalog como Bronze.
 Os models Silver limpam, tipam e enriquecem os dados com joins e flags. O model
 Gold principal cruza os pedidos Olist com o PIB per capita do IBGE e gera o
-indicador `ticket_por_pib` que revela o paradoxo de consumo relativo: estados mais
-pobres compraram proporcionalmente mais.
+indicador `ticket_por_pib`.
 
 Os 14 testes de qualidade validam `not_null`, `unique` e `accepted_values` em cada
 tabela automaticamente a cada execucao. O lineage completo (Bronze → Silver → Gold)
