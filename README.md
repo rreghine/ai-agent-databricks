@@ -65,17 +65,17 @@ CSVs Olist (Kaggle) + IBGE (embutido)
   dbt seed → Bronze (workspace.ecommerce_ai_bronze)
         |
   dbt run  → Silver (workspace.ecommerce_ai_silver)
-    |-- silver_pedidos_entregues     join + flags de atraso
-    |-- silver_itens_por_pedido      valor total + qtd itens
-    |-- silver_pagamentos_por_pedido parcelas + flag parcelado
-    |-- silver_reviews_por_pedido    nota media + flag satisfeito
+    |-- silver_pedidos_entregues     
+    |-- silver_itens_por_pedido      
+    |-- silver_pagamentos_por_pedido 
+    |-- silver_reviews_por_pedido    
         |
   dbt run  → Gold (workspace.ecommerce_ai_gold)
-    |-- gold_performance_estados_ibge  27 estados · Olist x IBGE
-    |-- gold_parcelamento_por_renda    analise de credito
-    |-- gold_kpis_consolidados         visao executiva
+    |-- gold_performance_estados_ibge  
+    |-- gold_parcelamento_por_renda   
+    |-- gold_kpis_consolidados         
         |
-  dbt test → 14 testes · PASS=14 · ERROR=0
+  dbt test
         |
 Pergunta do usuario
         |
@@ -120,17 +120,17 @@ ai-agent-databricks/
 |   |-- dbt_project.yml
 |   |-- profiles.yml
 |   |-- seeds/
-|   |   |-- ibge_pib_estados.csv       # IBGE 2018 — 27 estados (embutido)
+|   |   |-- ibge_pib_estados.csv      
 |   |   |-- schema.yml
-|   |   |-- olist_*.csv                # baixar do Kaggle
+|   |   |-- olist_*.csv               
 |   |-- models/
-|   |   |-- silver/                    # 4 models Silver
-|   |   |-- gold/                      # 3 models Gold
+|   |   |-- silver/                   
+|   |   |-- gold/                      
 |   |-- PASSO_A_PASSO_WINDOWS.md
 |
-|-- app.py                             # Streamlit app — Databricks Apps (nativo)
-|-- app_databricks.py                  # Streamlit app — Streamlit Cloud / local
-|-- app.yaml                           # Config Databricks Apps
+|-- app.py                             
+|-- app_databricks.py                 
+|-- app.yaml                          
 |-- requirements.txt
 |-- README.md
 ```
