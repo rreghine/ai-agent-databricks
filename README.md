@@ -161,32 +161,6 @@ attempts), metricas (tokens_in, tokens_out, custo_usd, latencia_ms) e tags
 
 ---
 
-## Como Rodar (Windows)
-
-```bash
-# 1. Instalar dbt-databricks
-pip install dbt-databricks
-
-# 2. Copiar profiles.yml para o local do dbt
-copy profiles.yml %USERPROFILE%\.dbt\profiles.yml
-
-# 3. Baixar CSVs do Olist (kaggle.com/datasets/olistbr/brazilian-ecommerce)
-#    e colocar na pasta seeds\
-
-# 4. Rodar o pipeline completo
-cd dbt_ecommerce
-.\run.bat
-```
-
-Resultado esperado: `PASS=14 WARN=0 ERROR=0 TOTAL=14`
-
-Validar no Databricks SQL Editor:
-```sql
-SELECT * FROM ecommerce_ai_gold.gold_performance_estados_ibge LIMIT 10;
-```
-
----
-
 ## Tecnologias Utilizadas
 
 | Categoria | Ferramentas |
