@@ -1,4 +1,4 @@
-# E-Commerce AI Agent — Databricks Edition (Parte 4)
+# AI Agent — Databricks Edition
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue?style=flat-square)
 ![Databricks](https://img.shields.io/badge/Databricks-Free_Edition-red?style=flat-square)
